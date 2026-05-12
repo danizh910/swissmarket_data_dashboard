@@ -2,7 +2,7 @@
 // Called automatically by Vercel Cron (daily at 06:00 UTC) and manually via dashboard
 // Requires CRON_SECRET env var to prevent unauthorized calls (except from Vercel Cron)
 
-import { getDb, upsertIndicator } from '../lib/db.js';
+import { getDb, upsertIndicator, getAllSubscriptions, deleteSubscription } from '../lib/db.js';
 import {
   fetchPopulation,
   fetchWages,
@@ -18,7 +18,6 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Protect the endpoint — Vercel Cron sends Authorization header automatically
   const authHeader = req.headers.authorization ?? '';
   const cronSecret = process.env.CRON_SECRET ?? '';
   if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
@@ -29,10 +28,9 @@ export default async function handler(req, res) {
   const now = new Date().toISOString().slice(0, 7);
   const results = {};
 
-  // Run all fetchers in parallel; capture failures individually
   const tasks = [
-    { key: 'population',           label: 'Bevölkerung',            fn: fetchPopulation },
-    { key: 'wages',                label: 'Medianlöhne',            fn: fetchWages },
+    { key: 'population',           label: 'Bevölkerung',             fn: fetchPopulation },
+    { key: 'wages',                label: 'Medianlöhne',             fn: fetchWages },
     { key: 'unemploymentKanton',   label: 'Arbeitslosigkeit Kanton', fn: fetchUnemploymentKanton },
     { key: 'unemploymentTimeline', label: 'Arbeitslosigkeit CH',     fn: fetchUnemploymentTimeline },
     { key: 'inflation',            label: 'LIK Inflation',           fn: fetchInflation },
@@ -53,6 +51,43 @@ export default async function handler(req, res) {
       }
     }),
   );
+
+  // Send Web Push notifications if VAPID keys are configured
+  const okCount = Object.values(results).filter(r => r.ok).length;
+  if (process.env.VAPID_PRIVATE_KEY && process.env.VAPID_PUBLIC_KEY) {
+    try {
+      const { default: webpush } = await import('web-push');
+      webpush.setVapidDetails(
+        'mailto:tukibeats12@gmail.com',
+        process.env.VAPID_PUBLIC_KEY,
+        process.env.VAPID_PRIVATE_KEY,
+      );
+
+      const subs = await getAllSubscriptions(sql);
+      if (subs.length > 0) {
+        const payload = JSON.stringify({
+          title: 'BFS Statistik Hub',
+          body: `Daten aktualisiert · ${okCount}/${tasks.length} Quellen erfolgreich · ${new Date().toLocaleDateString('de-CH')}`,
+        });
+
+        await Promise.allSettled(
+          subs.map(sub =>
+            webpush.sendNotification(
+              { endpoint: sub.endpoint, keys: { auth: sub.auth, p256dh: sub.p256dh } },
+              payload,
+            ).catch(async err => {
+              if (err.statusCode === 410 || err.statusCode === 404) {
+                await deleteSubscription(sql, sub.endpoint);
+              }
+            }),
+          ),
+        );
+        console.log(`[refresh] Push sent to ${subs.length} subscriber(s)`);
+      }
+    } catch (err) {
+      console.error('[refresh] Push error:', err.message);
+    }
+  }
 
   const allOk = Object.values(results).every(r => r.ok);
   return res.status(allOk ? 200 : 207).json({

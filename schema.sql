@@ -10,3 +10,12 @@ CREATE TABLE IF NOT EXISTS bfs_cache (
 );
 
 CREATE INDEX IF NOT EXISTS bfs_cache_fetched_at_idx ON bfs_cache (fetched_at DESC);
+
+-- Web Push subscriptions
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  endpoint   TEXT PRIMARY KEY,
+  auth       TEXT        NOT NULL,
+  p256dh     TEXT        NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

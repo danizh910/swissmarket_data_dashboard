@@ -1,0 +1,17 @@
+{
+  "name": "BFS Statistik Hub",
+  "short_name": "Statistik Hub",
+  "description": "Schweizer Wirtschaftsdaten live: BFS, SECO, SNB",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F4F2EC",
+  "theme_color": "#D02129",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

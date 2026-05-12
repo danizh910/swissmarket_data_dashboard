@@ -1,5 +1,5 @@
 // BFS Statistik Hub — Main App
-const { useState: useStateA, useEffect: useEffectA, useRef: useRefA } = React;
+const { useState: useStateA, useEffect: useEffectA, useCallback: useCallbackA } = React;
 
 const NAV = [
   { id: 'overview',    label: 'Übersicht',          kbd: 'O' },
@@ -8,6 +8,15 @@ const NAV = [
   { id: 'preise',     label: 'Preise & Kaufkraft',   kbd: 'P' },
   { id: 'bevoelkerung', label: 'Bevölkerung',        kbd: 'B' },
 ];
+
+// VAPID public key (safe to expose in frontend)
+const VAPID_PUBLIC_KEY = 'BHy--n-VUUAyhXVMKzDnjvcjQVNjZOR9DEEThsm1AAh9tcL5_Rc_fVjkDOqWmbT4UqdfKxKxuH0WAZTZXvkWQyY';
+
+function urlBase64ToUint8Array(b64) {
+  const pad = '='.repeat((4 - b64.length % 4) % 4);
+  const b = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from([...b].map(c => c.charCodeAt(0)));
+}
 
 // ──────────────────────────────────────────────
 // Merge live API data into window.BFS_DATA
@@ -43,9 +52,7 @@ function applyLiveData(apiData) {
     }
   }
 
-  if (apiData.unemploymentKanton?.length) {
-    D.arbeitslosKanton = apiData.unemploymentKanton;
-  }
+  if (apiData.unemploymentKanton?.length) D.arbeitslosKanton = apiData.unemploymentKanton;
 
   if (apiData.inflation?.length) {
     D.inflationMonthly = apiData.inflation;
@@ -80,12 +87,11 @@ function applyLiveData(apiData) {
     const latest = apiData.aussenhandel.at(-1);
     const prev   = apiData.aussenhandel.at(-2);
     if (latest && prev) {
-      const saldo     = latest.ex - latest.im;
-      const saldoPrev = prev.ex - prev.im;
+      const saldo = latest.ex - latest.im;
       D.kpis.handelsbilanz = {
         ...D.kpis.handelsbilanz,
         value: +saldo.toFixed(1),
-        delta: +((saldo - saldoPrev) / Math.abs(saldoPrev) * 100).toFixed(1),
+        delta: +((saldo - (prev.ex - prev.im)) / Math.abs(prev.ex - prev.im) * 100).toFixed(1),
         year:  String(latest.y),
       };
     }
@@ -93,11 +99,9 @@ function applyLiveData(apiData) {
 
   if (apiData.wages?.length) {
     D.medianlohnBranche = apiData.wages;
-    D.loehne = apiData.wages; // also write to legacy key used by sections
+    D.loehne = apiData.wages;
     const total = apiData.wages.find(w => w.code === 'tot') ?? apiData.wages[0];
-    if (total) {
-      D.kpis.medianlohn = { ...D.kpis.medianlohn, value: total.value };
-    }
+    if (total) D.kpis.medianlohn = { ...D.kpis.medianlohn, value: total.value };
   }
 }
 
@@ -108,21 +112,73 @@ function exportCSV() {
   const D = window.BFS_DATA;
   const bom = '﻿';
   const header = 'Indikator;Wert;Einheit;Periode\n';
-  const rows = Object.values(D.kpis)
-    .map(k => `${k.label};${k.value};${k.unit};${k.year}`)
-    .join('\n');
+  const rows = Object.values(D.kpis).map(k => `${k.label};${k.value};${k.unit};${k.year}`).join('\n');
   const blob = new Blob([bom + header + rows], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
-  const a = Object.assign(document.createElement('a'), {
-    href: url,
-    download: `bfs-kpis-${new Date().toISOString().slice(0, 10)}.csv`,
-  });
-  a.click();
+  Object.assign(document.createElement('a'), {
+    href: url, download: `bfs-kpis-${new Date().toISOString().slice(0, 10)}.csv`,
+  }).click();
   URL.revokeObjectURL(url);
 }
 
 // ──────────────────────────────────────────────
-// Small reusable overlay dismiss wrapper
+// Push Subscribe Logic
+// ──────────────────────────────────────────────
+async function getPushState() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return 'unsupported';
+  const perm = Notification.permission;
+  if (perm === 'denied') return 'denied';
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    return sub ? 'subscribed' : 'default';
+  } catch { return 'default'; }
+}
+
+async function subscribePush(setStatus) {
+  try {
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') { setStatus('denied'); return; }
+
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+    });
+
+    const res = await fetch('/api/subscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subscription: sub }),
+    });
+    if (!res.ok) throw new Error('Subscribe API failed');
+    setStatus('subscribed');
+  } catch (err) {
+    console.error('[push]', err);
+    setStatus('default');
+  }
+}
+
+async function unsubscribePush(setStatus) {
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) {
+      await fetch('/api/subscribe', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ endpoint: sub.endpoint }),
+      });
+      await sub.unsubscribe();
+    }
+    setStatus('default');
+  } catch (err) {
+    console.error('[push unsubscribe]', err);
+  }
+}
+
+// ──────────────────────────────────────────────
+// Overlay (dismiss dropdowns on outside click)
 // ──────────────────────────────────────────────
 function Overlay({ onClose }) {
   return <div className="overlay-dismiss" onClick={onClose} />;
@@ -139,37 +195,32 @@ function ApiModal({ onClose }) {
         <div className="modal-title">API-Zugriff</div>
         <div className="modal-sub">Direkter Zugriff auf den BFS Statistik Hub Cache via REST-API.</div>
 
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 11.5, color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
-            GET · Cached Indicators
-          </div>
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 11, color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>GET · Cached Indicators</div>
           <div className="code-block">{`GET ${base}/api/data
 
-Response:
 {
   "ok": true,
-  "updatedAt": "2025-05-12T06:00:00Z",
+  "updatedAt": "...",
   "data": {
     "population": [...],
     "inflation": [...],
     "snbLeitzins": [...],
-    ...
+    "wages": [...]
   }
 }`}</div>
         </div>
 
-        <div style={{ marginBottom: 4 }}>
-          <div style={{ fontSize: 11.5, color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
-            POST · Refresh (requires Authorization)
-          </div>
+        <div>
+          <div style={{ fontSize: 11, color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>POST · Refresh (erfordert Auth)</div>
           <div className="code-block">{`POST ${base}/api/refresh
 Authorization: Bearer <CRON_SECRET>
 
-Response: { "ok": true, "results": { ... } }`}</div>
+{ "ok": true, "results": { ... } }`}</div>
         </div>
 
-        <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 12 }}>
-          Daten: BFS PX-Web · SECO Opendatasoft · SNB Data Portal · Neon PostgreSQL Cache
+        <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 14 }}>
+          Cache: Neon PostgreSQL · Aktualisierung täglich 06:00 UTC
         </div>
 
         <div className="modal-actions">
@@ -181,68 +232,71 @@ Response: { "ok": true, "results": { ... } }`}</div>
 }
 
 // ──────────────────────────────────────────────
-// Notification dropdown
+// Notification dropdown (bell)
 // ──────────────────────────────────────────────
-function NotificationDropdown({ updatedAt, onClose }) {
+function NotificationDropdown({ updatedAt, pushStatus, setPushStatus, onClose }) {
   const timeStr = updatedAt
     ? new Date(updatedAt).toLocaleString('de-CH', { dateStyle: 'short', timeStyle: 'short' })
-    : '—';
+    : null;
+
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
 
   return (
     <>
       <Overlay onClose={onClose} />
-      <div className="dropdown" style={{ minWidth: 260 }}>
+      <div className="dropdown" style={{ minWidth: 280, right: 0 }}>
         <div className="dropdown-section">
-          <div className="dropdown-label">Benachrichtigungen</div>
-          {updatedAt ? (
-            <div className="dropdown-item" style={{ cursor: 'default' }}>
-              <span style={{ fontSize: 14 }}>✓</span>
-              <div>
-                <div style={{ fontSize: 12.5, color: 'var(--ink)' }}>Daten aktualisiert</div>
-                <div style={{ fontSize: 11, color: 'var(--ink-3)' }}>{timeStr}</div>
-              </div>
-            </div>
-          ) : (
-            <div className="dropdown-item" style={{ cursor: 'default', color: 'var(--ink-3)' }}>
-              Noch keine Live-Daten geladen
+          <div className="dropdown-label">Letzte Aktualisierung</div>
+          <div className="dropdown-item" style={{ cursor: 'default' }}>
+            {timeStr
+              ? <><span style={{ color: 'var(--up)', fontSize: 13 }}>✓</span><div><div style={{ fontSize: 12.5, color: 'var(--ink)' }}>Daten aktualisiert</div><div style={{ fontSize: 11, color: 'var(--ink-3)' }}>{timeStr}</div></div></>
+              : <span style={{ color: 'var(--ink-3)', fontSize: 12.5 }}>Noch keine Live-Daten</span>
+            }
+          </div>
+        </div>
+
+        <div className="dropdown-section">
+          <div className="dropdown-label">Push-Benachrichtigungen</div>
+          {pushStatus === 'unsupported' && (
+            <div className="dropdown-item" style={{ cursor: 'default', fontSize: 12, color: 'var(--ink-3)' }}>
+              Nicht unterstützt in diesem Browser
             </div>
           )}
+          {pushStatus === 'denied' && (
+            <div className="dropdown-item" style={{ cursor: 'default', fontSize: 12, color: 'var(--down)' }}>
+              Berechtigung verweigert — bitte Browser-Einstellungen prüfen
+            </div>
+          )}
+          {pushStatus === 'default' && (
+            <div className="dropdown-item" onClick={() => { subscribePush(setPushStatus); onClose(); }}
+              style={{ color: 'var(--accent)', fontWeight: 500 }}>
+              <span style={{ fontSize: 14 }}>🔔</span>
+              <div>
+                <div style={{ fontSize: 12.5 }}>Benachrichtigungen aktivieren</div>
+                {isIOS && !isStandalone && (
+                  <div style={{ fontSize: 11, color: 'var(--ink-3)' }}>iPhone: erst "Zum Home-Bildschirm" hinzufügen</div>
+                )}
+              </div>
+            </div>
+          )}
+          {pushStatus === 'subscribed' && (
+            <>
+              <div className="dropdown-item" style={{ cursor: 'default' }}>
+                <span style={{ color: 'var(--up)', fontSize: 13 }}>🔔</span>
+                <div style={{ fontSize: 12.5, color: 'var(--ink)' }}>Aktiv · täglich 06:00 UTC</div>
+              </div>
+              <div className="dropdown-item danger" onClick={() => { unsubscribePush(setPushStatus); onClose(); }}>
+                <span style={{ fontSize: 13 }}>✕</span>
+                <div style={{ fontSize: 12.5 }}>Deaktivieren</div>
+              </div>
+            </>
+          )}
         </div>
-        <div className="dropdown-section">
-          <div className="dropdown-item" style={{ cursor: 'default', fontSize: 12, color: 'var(--ink-3)' }}>
-            Nächste Aktualisierung: täglich 06:00 UTC
-          </div>
-        </div>
-      </div>
-    </>
-  );
-}
 
-// ──────────────────────────────────────────────
-// Profile dropdown
-// ──────────────────────────────────────────────
-function ProfileDropdown({ onClose }) {
-  return (
-    <>
-      <Overlay onClose={onClose} />
-      <div className="dropdown" style={{ minWidth: 200 }}>
         <div className="dropdown-section">
-          <div style={{ padding: '10px 14px' }}>
-            <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--ink)' }}>Daniel H.</div>
-            <div style={{ fontSize: 11.5, color: 'var(--ink-3)' }}>tukibeats12@gmail.com</div>
-          </div>
-        </div>
-        <div className="dropdown-section">
-          <div className="dropdown-item" onClick={onClose}>
-            <span style={{ fontSize: 13 }}>⚙</span> Einstellungen
-          </div>
-          <div className="dropdown-item" onClick={onClose}>
-            <span style={{ fontSize: 13 }}>📋</span> Changelog
-          </div>
-        </div>
-        <div className="dropdown-section">
-          <div className="dropdown-item danger" onClick={onClose}>
-            <span style={{ fontSize: 13 }}>↩</span> Abmelden
+          <div className="dropdown-item" style={{ cursor: 'default', fontSize: 11, color: 'var(--ink-3)', paddingTop: 6, paddingBottom: 6 }}>
+            Nächste Aktu. täglich um 06:00 UTC
           </div>
         </div>
       </div>
@@ -260,17 +314,16 @@ function App() {
   const [dataStatus, setDataStatus] = useStateA('loading');
   const [updatedAt, setUpdatedAt]   = useStateA(null);
   const [tick, setTick]             = useStateA(0);
-
-  // Dropdown / modal visibility
-  const [showNotif,   setShowNotif]   = useStateA(false);
-  const [showProfile, setShowProfile] = useStateA(false);
+  const [showNotif, setShowNotif]   = useStateA(false);
   const [showApiModal, setShowApiModal] = useStateA(false);
+  const [pushStatus, setPushStatus] = useStateA('unknown');
 
   useEffectA(() => {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('bfs-theme', theme);
   }, [theme]);
 
+  // Fetch live data from cache on load
   useEffectA(() => {
     fetch('/api/data')
       .then(r => r.json())
@@ -287,6 +340,12 @@ function App() {
       .catch(() => setDataStatus('static'));
   }, []);
 
+  // Check push subscription state on load
+  useEffectA(() => {
+    getPushState().then(setPushStatus);
+  }, []);
+
+  // Keyboard shortcuts
   useEffectA(() => {
     const onKey = e => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
@@ -294,7 +353,7 @@ function App() {
       const hit = NAV.find(n => n.kbd.toLowerCase() === k);
       if (hit) setRoute(hit.id);
       if (k === 't') setTheme(t => t === 'dark' ? 'light' : 'dark');
-      if (e.key === 'Escape') { setShowNotif(false); setShowProfile(false); setShowApiModal(false); }
+      if (e.key === 'Escape') { setShowNotif(false); setShowApiModal(false); }
       if (e.key === '/' && !e.metaKey) { e.preventDefault(); document.querySelector('.search input')?.focus(); }
     };
     window.addEventListener('keydown', onKey);
@@ -315,8 +374,7 @@ function App() {
     ? new Date(updatedAt).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' }) + ' UTC'
     : '—';
 
-  const statusLabel = dataStatus === 'loading' ? '…' : dataStatus === 'live' ? 'live' : 'static';
-  const statusClass = dataStatus === 'live' ? 'live' : '';
+  const hasBadge = pushStatus === 'subscribed' || dataStatus === 'live';
 
   return (
     <div className="app">
@@ -341,31 +399,27 @@ function App() {
 
         <div className="nav-section">Werkzeuge</div>
         <div className="nav-item" onClick={() => setRoute('preise')}>
-          <span className="nav-dot" />
-          <span>Kaufkraft-Rechner</span>
-          <span className="nav-shortcut">P</span>
+          <span className="nav-dot" /><span>Kaufkraft-Rechner</span><span className="nav-shortcut">P</span>
         </div>
         <div className="nav-item" onClick={exportCSV}>
-          <span className="nav-dot" />
-          <span>Export CSV</span>
+          <span className="nav-dot" /><span>Export CSV</span>
         </div>
         <div className="nav-item" onClick={() => setShowApiModal(true)}>
-          <span className="nav-dot" />
-          <span>API-Zugriff</span>
+          <span className="nav-dot" /><span>API-Zugriff</span>
         </div>
 
         <div className="nav-section">Status</div>
         <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, color: 'var(--ink-3)' }}>
-            <span className={`tag ${statusClass}`}>{statusLabel}</span>
+            <span className={`tag ${dataStatus === 'live' ? 'live' : ''}`}>
+              {dataStatus === 'loading' ? '…' : dataStatus === 'live' ? 'live' : 'static'}
+            </span>
             <span className="mono">99.97%</span>
           </div>
           <div style={{ fontSize: 11, color: 'var(--ink-3)', fontFamily: 'IBM Plex Mono' }}>
             {dataStatus === 'live'
               ? <>Last sync · {lastSync}<br />Nächste Aktu. · 06:00 UTC</>
-              : dataStatus === 'loading'
-              ? 'Lade Live-Daten …'
-              : 'Statische Daten (Fallback)'
+              : dataStatus === 'loading' ? 'Lade Live-Daten …' : 'Statische Daten (Fallback)'
             }
           </div>
         </div>
@@ -400,29 +454,20 @@ function App() {
           {/* Notification bell */}
           <div className="relative">
             <button className="icon-btn" title="Benachrichtigungen" style={{ position: 'relative' }}
-              onClick={() => { setShowNotif(v => !v); setShowProfile(false); }}>
+              onClick={() => setShowNotif(v => !v)}>
               <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <path d="M4 6a4 4 0 0 1 8 0v3l1.5 2.5h-11L4 9V6z" strokeLinejoin="round" />
                 <path d="M6.5 13a1.5 1.5 0 0 0 3 0" />
               </svg>
-              {dataStatus === 'live' && <span className="notif-badge" />}
+              {hasBadge && <span className="notif-badge" />}
             </button>
             {showNotif && (
-              <NotificationDropdown updatedAt={updatedAt} onClose={() => setShowNotif(false)} />
-            )}
-          </div>
-
-          {/* Profile avatar */}
-          <div className="relative">
-            <div
-              title="Profil"
-              style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--accent)', color: 'white',
-                       display: 'grid', placeItems: 'center', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}
-              onClick={() => { setShowProfile(v => !v); setShowNotif(false); }}>
-              DH
-            </div>
-            {showProfile && (
-              <ProfileDropdown onClose={() => setShowProfile(false)} />
+              <NotificationDropdown
+                updatedAt={updatedAt}
+                pushStatus={pushStatus}
+                setPushStatus={setPushStatus}
+                onClose={() => setShowNotif(false)}
+              />
             )}
           </div>
         </div>
@@ -438,7 +483,6 @@ function App() {
         </div>
       </div>
 
-      {/* API Modal */}
       {showApiModal && <ApiModal onClose={() => setShowApiModal(false)} />}
     </div>
   );
