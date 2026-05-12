@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "buildCommand": null,
+  "outputDirectory": "public",
+  "functions": {
+    "api/**/*.js": {
+      "runtime": "nodejs20.x"
+    }
+  },
+  "crons": [
+    {
+      "path": "/api/refresh",
+      "schedule": "0 6 * * *"
+    }
+  ]
+}
