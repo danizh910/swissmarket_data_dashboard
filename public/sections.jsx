@@ -34,18 +34,27 @@ function KpiCard({ label, value, unit, delta, deltaUnit, year, spark, sparkColor
 }
 
 // ========== ÜBERSICHT ==========
-function OverviewSection({ onGoTo }) {
+function OverviewSection({ onGoTo, dataStatus }) {
   const D = window.BFS_DATA;
   const [comparison, setComparison] = useStateS(['bip', 'inflation']);
+  const [timeRange, setTimeRange]   = useStateS('5J');
+
+  const RANGES = { '1J': { q: 4, m: 12 }, '5J': { q: 20, m: 60 }, '10J': { q: 40, m: 120 }, 'Max': { q: 999, m: 999 } };
+  const r = RANGES[timeRange];
+
+  const bipData  = D.bipQuarterly.slice(-r.q);
+  const inflData = D.inflationMonthly.slice(-r.m);
+  const alData   = D.arbeitslosTimeline.slice(-r.m);
+  const snbData  = D.snbleitzins.slice(-r.m);
 
   const sparks = {
-    bip: D.bipQuarterly.slice(-12).map(d => d.v),
-    inflation: D.inflationMonthly.map(d => d.v),
-    arbeitslos: D.arbeitslosTimeline.slice(-8).map(d => d.v),
+    bip:         bipData.map(d => d.v),
+    inflation:   inflData.map(d => d.v),
+    arbeitslos:  alData.map(d => d.v),
     bevoelkerung: D.bevoelkerungTimeline.map(d => d.v),
     leerwohnung: [1.62, 1.54, 1.49, 1.31, 1.15, 1.08],
-    medianlohn: [6488, 6502, 6538, 6620, 6665, 6788],
-    snbleitzins: D.snbleitzins.map(d => d.v),
+    medianlohn:  [6488, 6502, 6538, 6620, 6665, 6788],
+    snbleitzins: snbData.map(d => d.v),
     handelsbilanz: D.aussenhandel.map(d => d.ex - d.im),
   };
 
@@ -57,12 +66,20 @@ function OverviewSection({ onGoTo }) {
           <div className="section-desc">Headline-Indikatoren in Echtzeit. Quellen: BFS, SECO, SNB. Aktualisiert monatlich.</div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <span className="tag live">live · BFS feed</span>
+          {dataStatus === 'live'
+            ? <span className="tag live">live · BFS feed</span>
+            : dataStatus === 'loading'
+            ? <span className="tag">laden…</span>
+            : <span className="tag">statisch</span>
+          }
           <div className="btn-group">
-            <button className="btn">1J</button>
-            <button className="btn active">5J</button>
-            <button className="btn">10J</button>
-            <button className="btn">Max</button>
+            {['1J', '5J', '10J', 'Max'].map(label => (
+              <button key={label}
+                className={`btn ${timeRange === label ? 'active' : ''}`}
+                onClick={() => setTimeRange(label)}>
+                {label}
+              </button>
+            ))}
           </div>
         </div>
       </div>
@@ -85,7 +102,7 @@ function OverviewSection({ onGoTo }) {
 
       <div style={{ height: 24 }} />
 
-      {/* COMPARE MODE */}
+      {/* COMPARE MODE — uses filtered bipData */}
       <div className="card">
         <div className="card-header" style={{ justifyContent: 'space-between' }}>
           <div>
@@ -116,11 +133,11 @@ function OverviewSection({ onGoTo }) {
       <div className="grid" style={{ gridTemplateColumns: '2fr 1fr', gap: 12 }}>
         <div className="card">
           <div className="card-header">
-            <div className="card-title">Wirtschaft im Wandel — letzte 12 Quartale</div>
-            <div className="card-sub" style={{ marginLeft: 'auto' }}>BIP real, QoQ %</div>
+            <div className="card-title">Wirtschaft im Wandel · BIP real (QoQ, %)</div>
+            <div className="card-sub" style={{ marginLeft: 'auto' }}>{timeRange === 'Max' ? 'Alle Daten' : timeRange}</div>
           </div>
           <div className="card-body">
-            <AreaChart data={D.bipQuarterly.slice(-12)} xKey="q" yKey="v" h={220}
+            <AreaChart data={bipData} xKey="q" yKey="v" h={220}
               color="var(--accent)" formatY={v => `${v.toFixed(1)}%`} baseline={0} />
           </div>
         </div>
@@ -401,10 +418,10 @@ function ArbeitSection() {
             <div className="card-sub" style={{ marginLeft: 'auto' }}>CHF brutto / Monat</div>
           </div>
           <div className="card-body">
-            <BarChartH data={D.loehne} labelKey="branche" valueKey="value"
+            <BarChartH data={D.medianlohnBranche || D.loehne} labelKey="branche" valueKey="value"
               formatV={v => fmtCHF(v)}
               color="var(--info)" />
-            <div className="footer-note">Quelle: BFS Lohnstrukturerhebung (LSE) 2024 · Vollzeitäquivalent.</div>
+            <div className="footer-note">Quelle: BFS Lohnstrukturerhebung (LSE) · Vollzeitäquivalent.</div>
           </div>
         </div>
       </div>
@@ -629,5 +646,5 @@ function BevoelkerungSection() {
 }
 
 Object.assign(window, {
-  KpiCard, OverviewSection, WirtschaftSection, ArbeitSection, PreiseSection, BevoelkerungSection,
+  KpiCard, OverviewSection, WirtschaftSection, ArbeitSection, PreiseSection, BevoelkerungSection, CompareChart,
 });

@@ -4,6 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>BFS Statistik Hub</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23D02129'/><text y='25' x='5' font-size='26' font-family='system-ui,sans-serif' font-weight='bold' fill='white'>+</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Serif:wght@400;500&display=swap" rel="stylesheet" />
@@ -303,6 +304,68 @@
   ::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 4px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::selection { background: var(--accent-soft); color: var(--accent); }
+
+  /* ===== Dropdowns ===== */
+  .relative { position: relative; }
+  .dropdown {
+    position: absolute; top: calc(100% + 8px); right: 0;
+    background: var(--bg-card); border: 1px solid var(--line);
+    border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+    min-width: 230px; z-index: 200; overflow: hidden;
+  }
+  .dropdown-section { padding: 6px 0; }
+  .dropdown-section + .dropdown-section { border-top: 1px solid var(--line); }
+  .dropdown-label {
+    padding: 6px 14px 4px;
+    font-size: 10.5px; color: var(--ink-3);
+    text-transform: uppercase; letter-spacing: 0.08em;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  .dropdown-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 14px; font-size: 13px; color: var(--ink-2);
+    cursor: pointer; transition: background 0.1s; user-select: none;
+  }
+  .dropdown-item:hover { background: var(--bg-elev); color: var(--ink); }
+  .dropdown-item.danger:hover { background: var(--down-soft); color: var(--down); }
+  .overlay-dismiss { position: fixed; inset: 0; z-index: 199; }
+
+  /* ===== Modal ===== */
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+    z-index: 300; display: grid; place-items: center;
+    backdrop-filter: blur(4px);
+  }
+  .modal {
+    background: var(--bg-card); border-radius: 16px;
+    padding: 28px; max-width: 540px; width: calc(100% - 40px);
+    box-shadow: 0 24px 64px rgba(0,0,0,0.2);
+    border: 1px solid var(--line);
+  }
+  .modal-title { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; margin-bottom: 4px; }
+  .modal-sub { font-size: 12.5px; color: var(--ink-3); margin-bottom: 20px; }
+  .code-block {
+    background: var(--bg-elev); border: 1px solid var(--line);
+    border-radius: 8px; padding: 12px 14px; margin: 8px 0;
+    font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+    color: var(--ink-2); white-space: pre-wrap; line-height: 1.6;
+  }
+  .modal-actions { display: flex; justify-content: flex-end; margin-top: 20px; gap: 8px; }
+  .btn-primary {
+    padding: 8px 16px; border-radius: 8px;
+    background: var(--ink); color: var(--bg);
+    border: none; font-size: 13px; font-weight: 500;
+    cursor: pointer; font-family: inherit;
+  }
+  .btn-primary:hover { opacity: 0.85; }
+
+  /* ===== Notification badge ===== */
+  .notif-badge {
+    position: absolute; top: -2px; right: -2px;
+    width: 7px; height: 7px;
+    background: var(--accent); border-radius: 50%;
+    border: 2px solid var(--bg);
+  }
 </style>
 </head>
 <body>
