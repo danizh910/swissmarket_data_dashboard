@@ -372,6 +372,58 @@
     background: var(--accent); border-radius: 50%;
     border: 2px solid var(--bg);
   }
+
+  /* ===== Mobile ===== */
+  .hamburger { display: none; }
+  .sidebar-backdrop { display: none; }
+  @media (max-width: 768px) {
+    .app { grid-template-columns: 1fr; }
+    .hamburger {
+      display: grid; place-items: center;
+      background: var(--bg-elev); border: 1px solid var(--line);
+      color: var(--ink-2); width: 32px; height: 32px;
+      border-radius: 8px; flex-shrink: 0;
+    }
+    .sidebar {
+      position: fixed; left: -252px; top: 0;
+      width: 232px; height: 100%; z-index: 500;
+      transition: left 0.22s cubic-bezier(0.4,0,0.2,1);
+    }
+    .sidebar.open { left: 0; box-shadow: 4px 0 24px rgba(0,0,0,0.2); }
+    .sidebar-backdrop {
+      display: block; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.45); z-index: 499;
+    }
+    .search { max-width: none; flex: 1; margin-left: 0; }
+    .search-kbd { display: none; }
+    .nav-shortcut { display: none; }
+    .content { padding: 16px 16px 80px; }
+    .topbar { padding: 10px 16px; gap: 8px; }
+    .crumb { display: none; }
+    .kpi-value { font-size: 22px; }
+    /* Collapse named grid helpers */
+    .grid-4 { grid-template-columns: repeat(2, 1fr); }
+    .grid-3 { grid-template-columns: 1fr; }
+    .grid-2 { grid-template-columns: 1fr; }
+    /* Collapse any .grid div with an inline gridTemplateColumns (2fr 1fr etc.) */
+    .grid[style*="grid-template-columns"] {
+      grid-template-columns: 1fr !important;
+      gap: 12px !important;
+    }
+    /* Compact section header on mobile */
+    .section-head { flex-direction: column; align-items: flex-start; gap: 10px; }
+    .section-title { font-size: 18px; }
+    /* Cards */
+    .card-header { flex-wrap: wrap; gap: 6px; }
+    .card-header > div:last-child { overflow-x: auto; }
+    /* Table scroll */
+    .card-body { overflow-x: auto; }
+    table.data { min-width: 420px; }
+  }
+  @media (max-width: 480px) {
+    .grid-4 { grid-template-columns: 1fr; }
+    .kpi-value { font-size: 20px; }
+  }
 </style>
 </head>
 <body>

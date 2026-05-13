@@ -317,6 +317,7 @@ function App() {
   const [showNotif, setShowNotif]   = useStateA(false);
   const [showApiModal, setShowApiModal] = useStateA(false);
   const [pushStatus, setPushStatus] = useStateA('unknown');
+  const [sidebarOpen, setSidebarOpen] = useStateA(false);
 
   useEffectA(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -378,8 +379,11 @@ function App() {
 
   return (
     <div className="app">
+      {/* SIDEBAR BACKDROP (mobile) */}
+      {sidebarOpen && <div className="sidebar-backdrop" onClick={() => setSidebarOpen(false)} />}
+
       {/* SIDEBAR */}
-      <aside className="sidebar">
+      <aside className={`sidebar${sidebarOpen ? ' open' : ''}`}>
         <div className="brand">
           <div className="brand-mark">+</div>
           <div>
@@ -390,7 +394,7 @@ function App() {
 
         <div className="nav-section">Dashboard</div>
         {NAV.map(n => (
-          <div key={n.id} className={`nav-item ${route === n.id ? 'active' : ''}`} onClick={() => setRoute(n.id)}>
+          <div key={n.id} className={`nav-item ${route === n.id ? 'active' : ''}`} onClick={() => { setRoute(n.id); setSidebarOpen(false); }}>
             <span className="nav-dot" />
             <span>{n.label}</span>
             <span className="nav-shortcut">{n.kbd}</span>
@@ -428,6 +432,13 @@ function App() {
       {/* MAIN */}
       <div className="main">
         <div className="topbar">
+          {/* Hamburger (mobile only) */}
+          <button className="hamburger" onClick={() => setSidebarOpen(v => !v)} title="Menü">
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7">
+              <path d="M2 4h12M2 8h12M2 12h12" strokeLinecap="round" />
+            </svg>
+          </button>
+
           <div className="crumb">
             Statistik Hub <span style={{ margin: '0 6px', color: 'var(--ink-4)' }}>/</span>
             <b>{currentNav.label}</b>
