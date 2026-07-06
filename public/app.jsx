@@ -10,8 +10,8 @@ const NAV = [
   { id: 'analyse',    label: 'Analyse & Signale',    kbd: 'S' },
 ];
 
-// VAPID public key (safe to expose in frontend)
-const VAPID_PUBLIC_KEY = 'BHy--n-VUUAyhXVMKzDnjvcjQVNjZOR9DEEThsm1AAh9tcL5_Rc_fVjkDOqWmbT4UqdfKxKxuH0WAZTZXvkWQyY';
+// VAPID public key (safe to expose in frontend) — rotiert Jul 2026
+const VAPID_PUBLIC_KEY = 'BBcGI_RvcUOpH-CmnH3jEtGtYEQhjEoRFMWLcLcDmd6s7Jp-BvfU7S7lD9W8aZVHCPx4pWmrtjK57BuEAfHJaRA';
 
 function urlBase64ToUint8Array(b64) {
   const pad = '='.repeat((4 - b64.length % 4) % 4);
