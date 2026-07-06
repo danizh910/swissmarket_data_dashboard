@@ -1,13 +1,17 @@
 {
   "name": "bfs-statistik-hub",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
   "engines": {
     "node": "20.x"
   },
+  "scripts": {
+    "test:fetchers": "node scripts/test-fetchers.mjs"
+  },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4",
-    "web-push": "^3.6.7"
+    "web-push": "^3.6.7",
+    "xlsx": "^0.18.5"
   }
 }

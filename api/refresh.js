@@ -2,25 +2,31 @@
 // Called automatically by Vercel Cron (daily at 06:00 UTC) and manually via dashboard
 // Requires CRON_SECRET env var to prevent unauthorized calls (except from Vercel Cron)
 
-import { getDb, upsertIndicator, getAllSubscriptions, deleteSubscription } from '../lib/db.js';
+import { timingSafeEqual } from 'node:crypto';
+import { getDb, upsertIndicator, getIndicator, getAllSubscriptions, deleteSubscription } from '../lib/db.js';
 import {
   fetchPopulation,
   fetchWages,
-  fetchUnemploymentKanton,
   fetchUnemploymentTimeline,
   fetchInflation,
   fetchSNBLeitzins,
   fetchAussenhandel,
 } from '../lib/fetchers.js';
 
+function safeEqual(a, b) {
+  const ba = Buffer.from(a), bb = Buffer.from(b);
+  return ba.length === bb.length && timingSafeEqual(ba, bb);
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST' && req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  // Fail closed: without configured CRON_SECRET the endpoint stays locked
   const authHeader = req.headers.authorization ?? '';
   const cronSecret = process.env.CRON_SECRET ?? '';
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  if (!cronSecret || !safeEqual(authHeader, `Bearer ${cronSecret}`)) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
@@ -28,10 +34,12 @@ export default async function handler(req, res) {
   const now = new Date().toISOString().slice(0, 7);
   const results = {};
 
+  // Hinweis: unemploymentKanton wird nicht mehr aktualisiert — das SECO-Portal
+  // data.seco.admin.ch wurde abgeschaltet und es gibt (Stand Jul 2026) keine
+  // öffentliche API für Kantonswerte. Der letzte Stand bleibt in der DB erhalten.
   const tasks = [
     { key: 'population',           label: 'Bevölkerung',             fn: fetchPopulation },
     { key: 'wages',                label: 'Medianlöhne',             fn: fetchWages },
-    { key: 'unemploymentKanton',   label: 'Arbeitslosigkeit Kanton', fn: fetchUnemploymentKanton },
     { key: 'unemploymentTimeline', label: 'Arbeitslosigkeit CH',     fn: fetchUnemploymentTimeline },
     { key: 'inflation',            label: 'LIK Inflation',           fn: fetchInflation },
     { key: 'snbLeitzins',          label: 'SNB Leitzins',            fn: fetchSNBLeitzins },
@@ -41,7 +49,26 @@ export default async function handler(req, res) {
   await Promise.allSettled(
     tasks.map(async ({ key, label, fn }) => {
       try {
-        const data = await fn();
+        let data = await fn();
+
+        // For inflation: fetchInflation() returns only the current month.
+        // Merge it into the existing DB time series so the chart keeps history.
+        if (key === 'inflation' && Array.isArray(data)) {
+          try {
+            const existingRow = await getIndicator(sql, key);
+            if (existingRow) {
+              const existing = typeof existingRow.data === 'string'
+                ? JSON.parse(existingRow.data)
+                : existingRow.data;
+              if (Array.isArray(existing) && existing.length > 0) {
+                const byMonth = new Map(existing.map(p => [p.m, p]));
+                data.forEach(p => byMonth.set(p.m, p));
+                data = [...byMonth.values()].sort((a, b) => a.m.localeCompare(b.m));
+              }
+            }
+          } catch { /* merge failed — store new data as-is */ }
+        }
+
         await upsertIndicator(sql, key, data, 'live', now);
         results[key] = { ok: true, rows: Array.isArray(data) ? data.length : 1 };
         console.log(`[refresh] ✓ ${label}: ${results[key].rows} rows`);

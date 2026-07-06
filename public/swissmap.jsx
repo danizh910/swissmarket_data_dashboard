@@ -193,7 +193,7 @@ function SwissMap({ data, onHover, valueLabel = '%' }) {
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
               <span style={{ opacity: 0.6, fontSize: 10.5, fontFamily: 'IBM Plex Mono', letterSpacing: '0.05em' }}>{byCode[hovered].code}</span>
-              <span style={{ fontSize: 11, opacity: 0.8 }}>Apr 2025</span>
+              {byCode[hovered].period && <span style={{ fontSize: 11, opacity: 0.8 }}>{byCode[hovered].period}</span>}
             </div>
             <div style={{ fontWeight: 600, marginBottom: 6 }}>{byCode[hovered].name}</div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>

@@ -330,4 +330,4 @@ function StackedBars({ data, keys, colors, h = 180, formatY, xKey }) {
 }
 
 // Make components globally available
-Object.assign(window, { Sparkline, AreaChart, BarChartH, DivergingBars, Pyramide, KantonHeatmap, Donut, StackedBars });
+Object.assign(window, { Sparkline, AreaChart, BarChartH, DivergingBars, Pyramide, Donut, StackedBars });

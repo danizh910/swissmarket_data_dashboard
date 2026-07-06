@@ -28,6 +28,6 @@ export default async function handler(req, res) {
     });
   } catch (err) {
     console.error('[/api/data]', err);
-    return res.status(500).json({ ok: false, error: err.message });
+    return res.status(500).json({ ok: false, error: 'Internal error' });
   }
 }
